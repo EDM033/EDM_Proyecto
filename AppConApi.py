@@ -426,21 +426,26 @@ with tab4:
         data = st.session_state.ruta_resultado
         est_coger = data["est_coger"]
         est_dejar = data["est_dejar"]
-    
+
         st.success("✅ Ruta calculada correctamente")
         st.markdown(f"""
         - 🚲 **Coge la bici en:** {est_coger['Direccion']}  
-          _(a {est_coger['Distancia_origen']:.2f} km del origen)_
-    
+        _(a {est_coger['Distancia_origen']:.2f} km del origen)_
+
         - 📍 **Déjala en:** {est_dejar['Direccion']}  
-          _(a {est_dejar['Distancia_destino']:.2f} km del destino)_
+        _(a {est_dejar['Distancia_destino']:.2f} km del destino)_
         """)
-    
+
+        # Solo recalcula el mapa si es una nueva ruta
         if "mapa_ruta_key" not in st.session_state or st.session_state.get("nueva_ruta", False):
             st.session_state.mapa_ruta = mostrar_ruta_en_mapa(data)
             st.session_state.mapa_ruta_key = f"mapa_{data['lat_ori']}_{data['lon_ori']}_{data['lat_dest']}_{data['lon_dest']}"
-            st.session_state.nueva_ruta = False
-    
-        st_folium(st.session_state.mapa_ruta, key=st.session_state.mapa_ruta_key, width=1000, height=600)
+            st.session_state.nueva_ruta = False  # Marcar que ya no es nueva
 
-
+        # Mostrar el mapa ya guardado (no se repinta cada segundo)
+        st_folium(
+            st.session_state.mapa_ruta,
+            key=st.session_state.mapa_ruta_key,
+            width=1000,
+            height=600
+        )
