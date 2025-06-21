@@ -224,121 +224,93 @@ with tab3:
 with tab4:
     st.subheader("🧭 Planificar trayecto por dirección")
 
-    if "ruta_resultado" not in st.session_state:
-        st.session_state.ruta_resultado = None
+    # Inicializar estado si no existe
+    if "ruta_datos" not in st.session_state:
+        st.session_state.ruta_datos = None
+        st.session_state.mapa_guardado = None
 
-    if "mapa_ruta" not in st.session_state:
-        st.session_state.mapa_ruta = None
-
-    def dentro_de_valencia(lat, lon):
-        return 39.40 <= lat <= 39.55 and -0.50 <= lon <= -0.30
-
-    def geolocalizar_valencia(direccion_usuario):
-        direccion_usuario = direccion_usuario.strip().replace("Av.", "Avenida").replace("Avda.", "Avenida")
-        params = {
-            "street": direccion_usuario,
-            "city": "Valencia",
-            "country": "España",
-            "format": "json",
-            "limit": 10,
-            "countrycodes": "es",
-            "accept-language": "es",
-            "viewbox": "-0.41,39.43,-0.33,39.52",
-            "bounded": 1,
-        }
-        headers = {"User-Agent": "valenbisi-edm-app"}
-        resp = requests.get("https://nominatim.openstreetmap.org/search", headers=headers, params=params)
-
-        if resp.status_code != 200 or not resp.json():
-            return []
-
-        resultados = []
-        for r in resp.json():
-            lat, lon = float(r["lat"]), float(r["lon"])
-            if dentro_de_valencia(lat, lon):
-                score = fuzz.partial_ratio(direccion_usuario.lower(), r["display_name"].split(",")[0].lower())
-                resultados.append({"lat": lat, "lon": lon, "score": score, "display_name": r["display_name"]})
-
-        return sorted(resultados, key=lambda x: -x["score"])[:5]
-
-    def mostrar_ruta_en_mapa(data):
-        mapa = folium.Map(location=[data["lat_ori"], data["lon_ori"]], zoom_start=13)
-        puntos = [
-            (data["lat_ori"], data["lon_ori"], "Tu ubicación", "green", "home"),
-            (data["est_coger"]["latitud"], data["est_coger"]["longitud"], "Estación para coger bici", "blue", "bicycle"),
-            (data["est_dejar"]["latitud"], data["est_dejar"]["longitud"], "Estación para dejar bici", "purple", "anchor"),
-            (data["lat_dest"], data["lon_dest"], "Tu destino", "red", "flag")
-        ]
-        for lat, lon, tip, color, icon in puntos:
-            folium.Marker([lat, lon], tooltip=tip, icon=folium.Icon(color=color, icon=icon, prefix="fa")).add_to(mapa)
-
-        try:
-            client = openrouteservice.Client(key="5b3ce3597851110001cf62481ad5ef9841524536bfdf7b57c64ba51e")
-            coords = [
-                (data["lon_ori"], data["lat_ori"]),
-                (data["est_coger"]["longitud"], data["est_coger"]["latitud"]),
-                (data["est_dejar"]["longitud"], data["est_dejar"]["latitud"]),
-                (data["lon_dest"], data["lat_dest"])
-            ]
-            for perfil in ['cycling-regular', 'foot-walking', 'driving-car']:
-                try:
-                    ruta = client.directions(coords, profile=perfil, format='geojson')
-                    if ruta.get("features"):
-                        coords_ruta = ruta["features"][0]["geometry"]["coordinates"]
-                        folium.PolyLine(
-                            locations=[[lat, lon] for lon, lat in coords_ruta],
-                            color="blue", weight=4, opacity=0.8
-                        ).add_to(mapa)
-                        mapa.fit_bounds([[lat, lon] for lon, lat in coords_ruta])
-                        break
-                except Exception:
-                    continue
-        except Exception as e:
-            st.warning(f"Error al calcular la ruta: {e}")
-
-        return mapa
-
-    with st.form("planificador_ruta"):
+    # Formulario
+    with st.form("plan_ruta"):
         col1, col2 = st.columns(2)
         with col1:
-            direccion_origen = st.text_input("Dirección de salida", placeholder="Ej: Calle Chile 4", key="origen")
+            origen_txt = st.text_input("Origen", key="origen_input")
         with col2:
-            direccion_destino = st.text_input("Dirección de destino", placeholder="Ej: Calle Colón 20", key="destino")
-        submitted = st.form_submit_button("Calcular ruta")
+            destino_txt = st.text_input("Destino", key="destino_input")
+        submit = st.form_submit_button("Calcular ruta")
 
-    if submitted:
-        origen = geolocalizar_valencia(direccion_origen)
-        destino = geolocalizar_valencia(direccion_destino)
-        if not origen or not destino:
-            st.error("❌ No se han encontrado coordenadas válidas.")
+    # Función auxiliar: geolocalizar dirección
+    def geolocalizar(direccion):
+        params = {
+            "q": direccion + ", Valencia, España",
+            "format": "json",
+            "countrycodes": "es",
+            "limit": 1
+        }
+        r = requests.get("https://nominatim.openstreetmap.org/search", params=params, headers={"User-Agent": "valenbisi-app"})
+        if r.status_code != 200 or not r.json():
+            return None
+        p = r.json()[0]
+        return float(p["lat"]), float(p["lon"])
+
+    # Función: generar mapa
+    def generar_mapa_con_ruta(data):
+        coords = [
+            (data["lon_ori"], data["lat_ori"]),
+            (data["lon_coger"], data["lat_coger"]),
+            (data["lon_dejar"], data["lat_dejar"]),
+            (data["lon_dest"], data["lat_dest"])
+        ]
+
+        cliente = openrouteservice.Client(key="5b3ce3597851110001cf62481ad5ef9841524536bfdf7b57c64ba51e")
+        ruta = cliente.directions(coords, profile="cycling-regular", format="geojson")
+
+        mapa = folium.Map(location=[data["lat_ori"], data["lon_ori"]], zoom_start=13)
+        folium.Marker([data["lat_ori"], data["lon_ori"]], tooltip="Inicio", icon=folium.Icon(color="green")).add_to(mapa)
+        folium.Marker([data["lat_dest"], data["lon_dest"]], tooltip="Destino", icon=folium.Icon(color="red")).add_to(mapa)
+        folium.Marker([data["lat_coger"], data["lon_coger"]], tooltip="Estación origen", icon=folium.Icon(color="blue")).add_to(mapa)
+        folium.Marker([data["lat_dejar"], data["lon_dejar"]], tooltip="Estación destino", icon=folium.Icon(color="purple")).add_to(mapa)
+
+        puntos_ruta = [[lat, lon] for lon, lat in ruta["features"][0]["geometry"]["coordinates"]]
+        folium.PolyLine(locations=puntos_ruta, color="blue", weight=5, opacity=0.8).add_to(mapa)
+        return mapa
+
+    # Si se pulsa el botón, calcular la ruta y guardar mapa
+    if submit:
+        ori_coords = geolocalizar(origen_txt)
+        dest_coords = geolocalizar(destino_txt)
+        if not ori_coords or not dest_coords:
+            st.error("Direcciones no encontradas.")
         else:
-            lat_ori, lon_ori = origen[0]["lat"], origen[0]["lon"]
-            lat_dest, lon_dest = destino[0]["lat"], destino[0]["lon"]
-            df_bicis = df[df["Bicis_disponibles"] > 0].copy()
-            df_bicis["Distancia_origen"] = df_bicis.apply(
-                lambda r: geodesic((lat_ori, lon_ori), (r["latitud"], r["longitud"])).km, axis=1
-            )
-            est_coger = df_bicis.sort_values(by="Distancia_origen").iloc[0]
-            df_huecos = df[df["Espacios_libres"] > 0].copy()
-            df_huecos["Distancia_destino"] = df_huecos.apply(
-                lambda r: geodesic((lat_dest, lon_dest), (r["latitud"], r["longitud"])).km, axis=1
-            )
-            est_dejar = df_huecos.sort_values(by="Distancia_destino").iloc[0]
-            st.session_state.ruta_resultado = {
+            lat_ori, lon_ori = ori_coords
+            lat_dest, lon_dest = dest_coords
+
+            est_origen = df[df["Bicis_disponibles"] > 0].copy()
+            est_origen["dist"] = est_origen.apply(lambda row: geodesic((lat_ori, lon_ori), (row["latitud"], row["longitud"])).km, axis=1)
+            est_coger = est_origen.sort_values("dist").iloc[0]
+
+            est_dest = df[df["Espacios_libres"] > 0].copy()
+            est_dest["dist"] = est_dest.apply(lambda row: geodesic((lat_dest, lon_dest), (row["latitud"], row["longitud"])).km, axis=1)
+            est_dejar = est_dest.sort_values("dist").iloc[0]
+
+            datos = {
                 "lat_ori": lat_ori, "lon_ori": lon_ori,
                 "lat_dest": lat_dest, "lon_dest": lon_dest,
-                "est_coger": est_coger, "est_dejar": est_dejar
+                "lat_coger": est_coger["latitud"], "lon_coger": est_coger["longitud"],
+                "lat_dejar": est_dejar["latitud"], "lon_dejar": est_dejar["longitud"],
+                "dir_coger": est_coger["Direccion"],
+                "dir_dejar": est_dejar["Direccion"],
+                "dist_ori": est_coger["dist"],
+                "dist_dest": est_dejar["dist"]
             }
-            st.session_state.mapa_ruta = mostrar_ruta_en_mapa(st.session_state.ruta_resultado)
+            st.session_state.ruta_datos = datos
+            st.session_state.mapa_guardado = generar_mapa_con_ruta(datos)
 
-    if st.session_state.ruta_resultado and st.session_state.mapa_ruta:
-        data = st.session_state.ruta_resultado
+    # Mostrar resultado guardado
+    if st.session_state.ruta_datos and st.session_state.mapa_guardado:
+        datos = st.session_state.ruta_datos
         st.success("✅ Ruta calculada correctamente")
         st.markdown(f"""
-        - 🚲 **Coge la bici en:** {data['est_coger']['Direccion']}  
-        _(a {data['est_coger']['Distancia_origen']:.2f} km del origen)_
-
-        - 📍 **Déjala en:** {data['est_dejar']['Direccion']}  
-        _(a {data['est_dejar']['Distancia_destino']:.2f} km del destino)_
+        - 🚲 **Coge la bici en:** {datos['dir_coger']} _(a {datos['dist_ori']:.2f} km)_
+        - 📍 **Déjala en:** {datos['dir_dejar']} _(a {datos['dist_dest']:.2f} km)_
         """)
-        st_folium(st.session_state.mapa_ruta, width=1000, height=600)
+        st_folium(st.session_state.mapa_guardado, width=1000, height=600)
