@@ -378,19 +378,18 @@ with tab4:
         submitted = st.form_submit_button("Calcular ruta")
     
     if submitted:
-        st.session_state.nueva_ruta = True
         origen = geolocalizar_valencia(direccion_origen)
         destino = geolocalizar_valencia(direccion_destino)
-    
+
         if not origen or not destino:
             st.error("❌ No se han encontrado coordenadas válidas para alguna de las direcciones.")
         else:
             ubi_ori = origen[0]
             ubi_dest = destino[0]
-    
+
             lat_ori, lon_ori = float(ubi_ori["lat"]), float(ubi_ori["lon"])
             lat_dest, lon_dest = float(ubi_dest["lat"]), float(ubi_dest["lon"])
-    
+
             if not dentro_de_valencia(lat_ori, lon_ori) or not dentro_de_valencia(lat_dest, lon_dest):
                 st.error("❌ Una de las direcciones no está dentro del área urbana de Valencia.")
             else:
@@ -401,52 +400,39 @@ with tab4:
                     axis=1
                 )
                 est_coger = df_bicis.sort_values(by="Distancia_origen").iloc[0]
-    
+
                 df_huecos = df[df["Espacios_libres"] > 0].copy()
                 df_huecos["Distancia_destino"] = df_huecos.apply(
                     lambda row: geodesic((lat_dest, lon_dest), (row["latitud"], row["longitud"])).km,
                     axis=1
                 )
                 est_dejar = df_huecos.sort_values(by="Distancia_destino").iloc[0]
-    
-                # Guardar resultado
-                st.session_state.ruta_resultado = {
+
+                # Guardar resultado y generar mapa UNA VEZ
+                ruta_data = {
                     "lat_ori": lat_ori, "lon_ori": lon_ori,
                     "lat_dest": lat_dest, "lon_dest": lon_dest,
                     "est_coger": est_coger,
                     "est_dejar": est_dejar
                 }
+
+                st.session_state.ruta_resultado = ruta_data
                 st.session_state.ruta_listo = True
-                st.session_state.nueva_ruta = True  # opcional si quieres forzar recálculo de mapa
-    
-    
-    
-    
-    
-    if st.session_state.get("ruta_listo") and st.session_state.get("ruta_resultado"):
-        data = st.session_state.ruta_resultado
-        est_coger = data["est_coger"]
-        est_dejar = data["est_dejar"]
+                st.session_state.mapa_ruta = mostrar_ruta_en_mapa(ruta_data)
 
-        st.success("✅ Ruta calculada correctamente")
-        st.markdown(f"""
-        - 🚲 **Coge la bici en:** {est_coger['Direccion']}  
-        _(a {est_coger['Distancia_origen']:.2f} km del origen)_
+# Mostrar la ruta y el mapa si ya está en session_state
+if st.session_state.get("ruta_listo") and st.session_state.get("ruta_resultado"):
+    data = st.session_state.ruta_resultado
+    est_coger = data["est_coger"]
+    est_dejar = data["est_dejar"]
 
-        - 📍 **Déjala en:** {est_dejar['Direccion']}  
-        _(a {est_dejar['Distancia_destino']:.2f} km del destino)_
-        """)
+    st.success("✅ Ruta calculada correctamente")
+    st.markdown(f"""
+    - 🚲 **Coge la bici en:** {est_coger['Direccion']}  
+      _(a {est_coger['Distancia_origen']:.2f} km del origen)_
 
-        # SOLO si es nueva ruta, generamos el mapa
-        if st.session_state.get("nueva_ruta", False):
-            st.session_state.mapa_ruta = mostrar_ruta_en_mapa(data)
-            st.session_state.nueva_ruta = False  # Se desactiva la bandera
+    - 📍 **Déjala en:** {est_dejar['Direccion']}  
+      _(a {est_dejar['Distancia_destino']:.2f} km del destino)_
+    """)
 
-        # Mostrar mapa ya renderizado (NO se vuelve a ejecutar la función)
-        st_folium(
-            st.session_state.get("mapa_ruta"),
-            key="mapa_resultado",
-            width=1000,
-            height=600
-        )
-
+    st_folium(st.session_state["mapa_ruta"], width=1000, height=600)
