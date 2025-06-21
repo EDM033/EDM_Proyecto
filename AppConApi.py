@@ -226,7 +226,7 @@ with tab4:
     
     def mostrar_ruta_en_mapa(data):
         ruta_map = folium.Map(location=[data["lat_ori"], data["lon_ori"]], zoom_start=13, control_scale=True)
-    
+
         # Añadir marcadores
         puntos = [
             (data["lat_ori"], data["lon_ori"], "Tu ubicación", "green", "home"),
@@ -234,76 +234,69 @@ with tab4:
             (data["est_dejar"]["latitud"], data["est_dejar"]["longitud"], "Estación para dejar bici", "purple", "anchor"),
             (data["lat_dest"], data["lon_dest"], "Tu destino", "red", "flag")
         ]
-    
+
         for lat, lon, tip, color, icono in puntos:
             folium.Marker(
                 [lat, lon],
                 tooltip=tip,
                 icon=folium.Icon(color=color, icon=icono, prefix="fa")
             ).add_to(ruta_map)
-    
+
         # Intentar generar ruta con varios perfiles
         try:
             ors_client = openrouteservice.Client(
                 key="5b3ce3597851110001cf62481ad5ef9841524536bfdf7b57c64ba51e",
                 timeout=10
             )
-    
+
             coords = [
                 (data["lon_ori"], data["lat_ori"]),
                 (data["est_coger"]["longitud"], data["est_coger"]["latitud"]),
                 (data["est_dejar"]["longitud"], data["est_dejar"]["latitud"]),
                 (data["lon_dest"], data["lat_dest"])
             ]
-    
+
             perfiles = ['cycling-regular', 'foot-walking', 'driving-car']
             route = None
-    
+
             for perfil in perfiles:
                 try:
                     ruta_temp = ors_client.directions(coords, profile=perfil, format='geojson')
-                    if ruta_temp.get("features"):
+                    if ruta_temp.get("features") and ruta_temp["features"][0]["geometry"]["coordinates"]:
                         route = ruta_temp
                         st.info(f"🧭 Ruta generada usando perfil: `{perfil}`")
                         break
                 except Exception as e:
                     st.warning(f"No se pudo usar el perfil `{perfil}`: {e}")
-    
+
             if not route:
                 st.error("❌ No se pudo generar la ruta con ningún perfil disponible.")
                 return ruta_map
-    
+
             # Obtener las coordenadas para ajustar el mapa
             ruta_coords = route["features"][0]["geometry"]["coordinates"]
 
-            # Dibujar la línea de la ruta (lon, lat → lat, lon)
-            folium.PolyLine(
-                locations=[[lat, lon] for lon, lat in ruta_coords],
-                color="blue",
-                weight=4,
-                opacity=0.8,
-                tooltip="Ruta ORS"
-            ).add_to(ruta_map)
-            
-            # Ajustar el zoom al área de la ruta
-            bounds = [[lat, lon] for lon, lat in ruta_coords]
-            ruta_map.fit_bounds(bounds)
+            if ruta_coords:
+                folium.PolyLine(
+                    locations=[[lat, lon] for lon, lat in ruta_coords],
+                    color="blue",
+                    weight=4,
+                    opacity=0.8,
+                    tooltip="Ruta ORS"
+                ).add_to(ruta_map)
 
-    
-            ruta_map.fit_bounds(bounds)
+                bounds = [[lat, lon] for lon, lat in ruta_coords]
+                ruta_map.fit_bounds(bounds)
+
             folium.LayerControl(collapsed=False).add_to(ruta_map)
-    
+
         except openrouteservice.exceptions.Timeout:
             st.warning("⚠️ La petición a OpenRouteService ha tardado demasiado. Intenta de nuevo más tarde.")
         except Exception as e:
             st.error(f"❌ Error inesperado al obtener la ruta: {e}")
-    
+
         return ruta_map
 
-
-    
-    
-    
     
     # Función más robusta para validar que las coordenadas están en Valencia
     def dentro_de_valencia(lat, lon):
