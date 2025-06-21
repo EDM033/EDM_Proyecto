@@ -420,9 +420,9 @@ with tab4:
                 st.session_state.ruta_listo = True
                 st.session_state.mapa_ruta = mostrar_ruta_en_mapa(ruta_data)
 
-# Mostrar la ruta y el mapa si ya está en session_state
-if st.session_state.get("ruta_listo") and st.session_state.get("ruta_resultado"):
-    data = st.session_state.ruta_resultado
+# Mostrar la ruta y el mapa si ya está calculado y guardado
+if st.session_state.get("ruta_listo") and st.session_state.get("ruta_resultado") and st.session_state.get("mapa_ruta"):
+    data = st.session_state["ruta_resultado"]
     est_coger = data["est_coger"]
     est_dejar = data["est_dejar"]
 
@@ -435,4 +435,10 @@ if st.session_state.get("ruta_listo") and st.session_state.get("ruta_resultado")
       _(a {est_dejar['Distancia_destino']:.2f} km del destino)_
     """)
 
-    st_folium(st.session_state["mapa_ruta"], width=1000, height=600)
+    # Mostrar el mapa generado anteriormente sin regenerarlo
+    st_folium(
+        st.session_state["mapa_ruta"],
+        key="mapa_resultado",
+        width=1000,
+        height=600
+    )
