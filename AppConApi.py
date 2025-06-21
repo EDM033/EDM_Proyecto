@@ -423,7 +423,7 @@ with tab4:
     
     
     
-    if st.session_state.get("ruta_listo") and st.session_state.get("ruta_resultado"):
+    if st.session_state.get("ruta_listo") and st.session_state.get("ruta_resultado"):ç
         data = st.session_state.ruta_resultado
         est_coger = data["est_coger"]
         est_dejar = data["est_dejar"]
@@ -437,16 +437,16 @@ with tab4:
         _(a {est_dejar['Distancia_destino']:.2f} km del destino)_
         """)
 
-        # Solo recalcula el mapa si es una nueva ruta
-        if "mapa_ruta_key" not in st.session_state or st.session_state.get("nueva_ruta", False):
+        # SOLO si es nueva ruta, generamos el mapa
+        if st.session_state.get("nueva_ruta", False):
             st.session_state.mapa_ruta = mostrar_ruta_en_mapa(data)
-            st.session_state.mapa_ruta_key = f"mapa_{data['lat_ori']}_{data['lon_ori']}_{data['lat_dest']}_{data['lon_dest']}"
-            st.session_state.nueva_ruta = False  # Marcar que ya no es nueva
+            st.session_state.nueva_ruta = False  # Se desactiva la bandera
 
-        # Mostrar el mapa ya guardado (no se repinta cada segundo)
+        # Mostrar mapa ya renderizado (NO se vuelve a ejecutar la función)
         st_folium(
-            st.session_state.mapa_ruta,
-            key=st.session_state.mapa_ruta_key,
+            st.session_state.get("mapa_ruta"),
+            key="mapa_resultado",
             width=1000,
             height=600
         )
+
