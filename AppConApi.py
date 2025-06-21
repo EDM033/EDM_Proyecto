@@ -224,117 +224,89 @@ with tab3:
 with tab4:
     st.subheader("🧭 Planificar trayecto por dirección")
 
-    # Inicializar claves de sesión si no existen
-    if "ruta_resultado" not in st.session_state:
-        st.session_state.ruta_resultado = None
-    if "ruta_listo" not in st.session_state:
-        st.session_state.ruta_listo = False
-    if "mapa_ruta" not in st.session_state:
-        st.session_state.mapa_ruta = None
-
-    # Función para verificar si las coordenadas están dentro de Valencia
     def dentro_de_valencia(lat, lon):
         return 39.40 <= lat <= 39.55 and -0.50 <= lon <= -0.30
 
-    # Función de geocodificación
     def geolocalizar_valencia(direccion_usuario):
         direccion_usuario = direccion_usuario.strip().replace("Av.", "Avenida").replace("Avda.", "Avenida")
         base_url = "https://nominatim.openstreetmap.org/search"
         params = {
             "street": direccion_usuario,
             "city": "Valencia",
-            "county": "Valencia",
-            "state": "Comunidad Valenciana",
-            "country": "España",
-            "format": "json",
-            "limit": 10,
-            "countrycodes": "es",
-            "accept-language": "es",
-            "viewbox": "-0.41,39.43,-0.33,39.52",
             "bounded": 1,
+            "viewbox": "-0.41,39.43,-0.33,39.52",
+            "format": "json",
+            "limit": 5,
+            "countrycodes": "es",
+            "accept-language": "es"
         }
         headers = {"User-Agent": "valenbisi-edm-app"}
-        resp = requests.get(base_url, headers=headers, params=params)
-        if resp.status_code != 200 or not resp.json():
+        r = requests.get(base_url, headers=headers, params=params)
+        if r.status_code != 200:
             return []
-        resultados_validos = []
-        for r in resp.json():
-            lat, lon = float(r["lat"]), float(r["lon"])
-            if dentro_de_valencia(lat, lon):
-                nombre_corto = r["display_name"].split(",")[0]
-                score = fuzz.partial_ratio(direccion_usuario.lower(), nombre_corto.lower())
-                resultados_validos.append({
-                    "display_name": r["display_name"],
-                    "lat": lat,
-                    "lon": lon,
-                    "score": score
-                })
-        return sorted(resultados_validos, key=lambda x: -x["score"])[:5]
+        return r.json()
 
-    # Función para mostrar ruta
     def mostrar_ruta_en_mapa(data):
-        ruta_map = folium.Map(location=[data["lat_ori"], data["lon_ori"]], zoom_start=13, control_scale=True)
+        ruta_map = folium.Map(location=[data["lat_ori"], data["lon_ori"]], zoom_start=13)
         puntos = [
             (data["lat_ori"], data["lon_ori"], "Tu ubicación", "green", "home"),
             (data["est_coger"]["latitud"], data["est_coger"]["longitud"], "Estación para coger bici", "blue", "bicycle"),
             (data["est_dejar"]["latitud"], data["est_dejar"]["longitud"], "Estación para dejar bici", "purple", "anchor"),
             (data["lat_dest"], data["lon_dest"], "Tu destino", "red", "flag")
         ]
-        for lat, lon, tip, color, icono in puntos:
-            folium.Marker([lat, lon], tooltip=tip, icon=folium.Icon(color=color, icon=icono, prefix="fa")).add_to(ruta_map)
+        for lat, lon, txt, color, icon in puntos:
+            folium.Marker([lat, lon], tooltip=txt, icon=folium.Icon(color=color, icon=icon, prefix='fa')).add_to(ruta_map)
 
         try:
-            ors_client = openrouteservice.Client(key="5b3ce3597851110001cf62481ad5ef9841524536bfdf7b57c64ba51e", timeout=10)
-            coords = [(data["lon_ori"], data["lat_ori"]),
-                      (data["est_coger"]["longitud"], data["est_coger"]["latitud"]),
-                      (data["est_dejar"]["longitud"], data["est_dejar"]["latitud"]),
-                      (data["lon_dest"], data["lat_dest"])]
-            for perfil in ['cycling-regular', 'foot-walking', 'driving-car']:
-                try:
-                    ruta = ors_client.directions(coords, profile=perfil, format='geojson')
-                    if ruta.get("features") and ruta["features"][0]["geometry"]["coordinates"]:
-                        ruta_coords = ruta["features"][0]["geometry"]["coordinates"]
-                        folium.PolyLine(
-                            locations=[[lat, lon] for lon, lat in ruta_coords],
-                            color="blue", weight=4, opacity=0.8, tooltip="Ruta ORS"
-                        ).add_to(ruta_map)
-                        ruta_map.fit_bounds([[lat, lon] for lon, lat in ruta_coords])
-                        break
-                except Exception:
-                    continue
+            client = openrouteservice.Client(key="TU_API_KEY_AQUI")
+            coords = [
+                (data["lon_ori"], data["lat_ori"]),
+                (data["est_coger"]["longitud"], data["est_coger"]["latitud"]),
+                (data["est_dejar"]["longitud"], data["est_dejar"]["latitud"]),
+                (data["lon_dest"], data["lat_dest"])
+            ]
+            result = client.directions(coords, profile='cycling-regular', format='geojson')
+            ruta_coords = result["features"][0]["geometry"]["coordinates"]
+            folium.PolyLine([[lat, lon] for lon, lat in ruta_coords], color="blue", weight=4).add_to(ruta_map)
         except Exception as e:
-            st.error(f"❌ Error al obtener ruta: {e}")
-
+            st.error(f"❌ Error en el trazado de la ruta: {e}")
         return ruta_map
 
-    # FORMULARIO DE DIRECCIONES
-    with st.form("planificador_ruta"):
+    # Inicializar estado si no existe
+    if "ruta_resultado" not in st.session_state:
+        st.session_state.ruta_resultado = None
+        st.session_state.mapa_ruta = None
+
+    with st.form("form_ruta"):
         col1, col2 = st.columns(2)
         with col1:
-            direccion_origen = st.text_input("Dirección de salida", placeholder="Ej: Calle Chile 4")
+            origen_text = st.text_input("Dirección de origen", key="origen")
         with col2:
-            direccion_destino = st.text_input("Dirección de destino", placeholder="Ej: Calle Colón 20")
-        submitted = st.form_submit_button("Calcular ruta")
+            destino_text = st.text_input("Dirección de destino", key="destino")
+        calcular = st.form_submit_button("Calcular ruta")
 
-    if submitted:
-        origen = geolocalizar_valencia(direccion_origen)
-        destino = geolocalizar_valencia(direccion_destino)
+    if calcular:
+        origen = geolocalizar_valencia(origen_text)
+        destino = geolocalizar_valencia(destino_text)
+
         if not origen or not destino:
-            st.error("❌ No se han encontrado coordenadas válidas.")
+            st.error("❌ Dirección no encontrada.")
         else:
-            ubi_ori = origen[0]
-            ubi_dest = destino[0]
-            lat_ori, lon_ori = float(ubi_ori["lat"]), float(ubi_ori["lon"])
-            lat_dest, lon_dest = float(ubi_dest["lat"]), float(ubi_dest["lon"])
+            lat_ori, lon_ori = float(origen[0]["lat"]), float(origen[0]["lon"])
+            lat_dest, lon_dest = float(destino[0]["lat"]), float(destino[0]["lon"])
+
             if not dentro_de_valencia(lat_ori, lon_ori) or not dentro_de_valencia(lat_dest, lon_dest):
-                st.error("❌ Alguna dirección está fuera del área urbana de Valencia.")
+                st.error("❌ Alguna dirección está fuera de Valencia.")
             else:
-                df_bicis = df[df["Bicis_disponibles"] > 0].copy()
-                df_bicis["Distancia_origen"] = df_bicis.apply(lambda row: geodesic((lat_ori, lon_ori), (row["latitud"], row["longitud"])).km, axis=1)
-                est_coger = df_bicis.sort_values(by="Distancia_origen").iloc[0]
-                df_huecos = df[df["Espacios_libres"] > 0].copy()
-                df_huecos["Distancia_destino"] = df_huecos.apply(lambda row: geodesic((lat_dest, lon_dest), (row["latitud"], row["longitud"])).km, axis=1)
-                est_dejar = df_huecos.sort_values(by="Distancia_destino").iloc[0]
+                df_bicis_disp = df[df["Bicis_disponibles"] > 0].copy()
+                df_bicis_disp["Distancia"] = df_bicis_disp.apply(
+                    lambda r: geodesic((lat_ori, lon_ori), (r["latitud"], r["longitud"])).km, axis=1)
+                est_coger = df_bicis_disp.sort_values(by="Distancia").iloc[0]
+
+                df_huecos_disp = df[df["Espacios_libres"] > 0].copy()
+                df_huecos_disp["Distancia"] = df_huecos_disp.apply(
+                    lambda r: geodesic((lat_dest, lon_dest), (r["latitud"], r["longitud"])).km, axis=1)
+                est_dejar = df_huecos_disp.sort_values(by="Distancia").iloc[0]
 
                 st.session_state.ruta_resultado = {
                     "lat_ori": lat_ori, "lon_ori": lon_ori,
@@ -343,19 +315,13 @@ with tab4:
                     "est_dejar": est_dejar
                 }
                 st.session_state.mapa_ruta = mostrar_ruta_en_mapa(st.session_state.ruta_resultado)
-                st.session_state.ruta_listo = True
 
-    # Mostrar resultado sin recalcular
-    if st.session_state.ruta_listo and st.session_state.ruta_resultado and st.session_state.mapa_ruta:
+    # Mostrar mapa solo si ya se generó una ruta
+    if st.session_state.ruta_resultado and st.session_state.mapa_ruta:
         data = st.session_state.ruta_resultado
-        est_coger = data["est_coger"]
-        est_dejar = data["est_dejar"]
-        st.success("✅ Ruta calculada correctamente")
+        st.success("✅ Ruta generada correctamente")
         st.markdown(f"""
-        - 🚲 **Coge la bici en:** {est_coger['Direccion']}  
-          _(a {est_coger['Distancia_origen']:.2f} km del origen)_
-
-        - 📍 **Déjala en:** {est_dejar['Direccion']}  
-          _(a {est_dejar['Distancia_destino']:.2f} km del destino)_
+        - 🚲 **Coge la bici en:** {data['est_coger']['Direccion']}
+        - 📍 **Déjala en:** {data['est_dejar']['Direccion']}
         """)
         st_folium(st.session_state.mapa_ruta, width=1000, height=600)
