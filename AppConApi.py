@@ -423,7 +423,7 @@ with tab4:
     
     
     
-    if st.session_state.get("ruta_listo") and st.session_state.get("ruta_resultado"):ç
+    if st.session_state.get("ruta_listo") and st.session_state.get("ruta_resultado"):
         data = st.session_state.ruta_resultado
         est_coger = data["est_coger"]
         est_dejar = data["est_dejar"]
