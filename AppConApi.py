@@ -242,7 +242,7 @@ with tab4:
                 icon=folium.Icon(color=color, icon=icono, prefix="fa")
             ).add_to(ruta_map)
     
-        # Añadir ruta con control de errores
+        # Intentar generar ruta con varios perfiles
         try:
             ors_client = openrouteservice.Client(
                 key="5b3ce3597851110001cf62481ad5ef9841524536bfdf7b57c64ba51e",
@@ -256,24 +256,51 @@ with tab4:
                 (data["lon_dest"], data["lat_dest"])
             ]
     
-            route = ors_client.directions(coords, profile='cycling-regular', format='geojson')
+            perfiles = ['cycling-regular', 'foot-walking', 'driving-car']
+            route = None
     
-            # Añadir la capa GeoJson con nombre único
-            folium.GeoJson(
-                route,
-                name="Ruta_en_bici",
-                tooltip="Ruta sugerida",
-                show=True,
+            for perfil in perfiles:
+                try:
+                    ruta_temp = ors_client.directions(coords, profile=perfil, format='geojson')
+                    if ruta_temp.get("features"):
+                        route = ruta_temp
+                        st.info(f"🧭 Ruta generada usando perfil: `{perfil}`")
+                        break
+                except Exception as e:
+                    st.warning(f"No se pudo usar el perfil `{perfil}`: {e}")
+    
+            if not route:
+                st.error("❌ No se pudo generar la ruta con ningún perfil disponible.")
+                return ruta_map
+    
+            # Obtener las coordenadas para ajustar el mapa
+            ruta_coords = route["features"][0]["geometry"]["coordinates"]
+
+            # Dibujar la línea de la ruta (lon, lat → lat, lon)
+            folium.PolyLine(
+                locations=[[lat, lon] for lon, lat in ruta_coords],
+                color="blue",
+                weight=4,
+                opacity=0.8,
+                tooltip="Ruta ORS"
             ).add_to(ruta_map)
+            
+            # Ajustar el zoom al área de la ruta
+            bounds = [[lat, lon] for lon, lat in ruta_coords]
+            ruta_map.fit_bounds(bounds)
+
     
+            ruta_map.fit_bounds(bounds)
             folium.LayerControl(collapsed=False).add_to(ruta_map)
     
         except openrouteservice.exceptions.Timeout:
             st.warning("⚠️ La petición a OpenRouteService ha tardado demasiado. Intenta de nuevo más tarde.")
         except Exception as e:
-            st.error(f"❌ Error al obtener la ruta: {e}")
+            st.error(f"❌ Error inesperado al obtener la ruta: {e}")
     
         return ruta_map
+
+
     
     
     
