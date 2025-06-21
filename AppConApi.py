@@ -378,6 +378,7 @@ with tab4:
         submitted = st.form_submit_button("Calcular ruta")
     
     if submitted:
+        st.session_state.nueva_ruta = True
         origen = geolocalizar_valencia(direccion_origen)
         destino = geolocalizar_valencia(direccion_destino)
     
