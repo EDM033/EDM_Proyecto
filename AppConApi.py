@@ -10,6 +10,10 @@ from geopy.distance import geodesic
 import openrouteservice
 from fuzzywuzzy import fuzz
 import urllib.parse
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+import joblib
+from datetime import datetime
 
 # --- Configuración inicial
 st.set_page_config(layout="wide")
@@ -342,3 +346,24 @@ with tab4:
         _(a {data['est_dejar']['Distancia_destino']:.2f} km del destino)_
         """)
         st_folium(st.session_state.mapa_ruta, width=1000, height=600)
+
+# --- Cargar histórico y modelo
+df_hist = pd.read_csv("valenbisi-2022-alquileres-y-devoluciones.csv")
+modelo_bicis = joblib.load("modelo_bicis.joblib")
+
+# --- Crear codificación de estación
+codigos_estacion = {nombre: i for i, nombre in enumerate(df_hist["station_name"].unique())}
+
+# --- Función de predicción del modelo para una estación
+def predecir_bicis(estacion_nombre):
+    ahora = datetime.now()
+    hora = ahora.hour
+    dia = ahora.weekday()
+    codigo_est = codigos_estacion.get(estacion_nombre, -1)
+    if codigo_est == -1:
+        return None
+    X_pred = pd.DataFrame([[codigo_est, hora, dia]], columns=["estacion", "hora", "dia_semana"])
+    return int(modelo_bicis.predict(X_pred)[0])
+
+# --- Aplicar predicción al dataframe actual
+df["Prediccion_modelo"] = df["Direccion"].apply(lambda nombre: predecir_bicis(nombre))
