@@ -359,71 +359,59 @@ with tab4:
 with tab5:
     st.subheader("📉 Predicción de bicicletas disponibles en 1 hora")
 
+    # Solo entrenar si no existe el modelo
     if not os.path.exists("modelo_bicis.joblib"):
         st.info("⏳ Entrenando el modelo (solo la primera vez)...")
 
         try:
-            # Leer el fichero y forzar separación y limpieza
-            import os
-
-# Limpiar el archivo solo si hay problemas (una vez al principio)
-csv_path = "valenbisi-2022-alquileres-y-devoluciones.csv"
-if os.path.exists(csv_path):
-    with open(csv_path, "w", encoding="utf-8") as f:
-        f.writelines(lines)
+            # Leer CSV y limpiar líneas defectuosas
+            with open("valenbisi-2022-alquileres-y-devoluciones.csv", "r", encoding="utf-8") as f:
+                lines = [line for line in f if line.strip() and ";" in line]
 
             from io import StringIO
             cleaned_data = StringIO("".join(lines))
-
             df_hist = pd.read_csv(cleaned_data, sep=";", engine="python")
 
-            # El resto igual:
+            # Extraer hora, día y codificar estación
             df_hist["hora"] = df_hist["Tramo horario"].str[:2].astype(int)
             codigos_estacion = {nombre: i for i, nombre in enumerate(df_hist["Estacion"].unique())}
             df_hist["estacion"] = df_hist["Estacion"].map(codigos_estacion)
             df_hist["dia_semana"] = pd.to_datetime(df_hist["Fecha creacion"].astype(str), format="%Y%m%d").dt.weekday
 
+            # Entrenar modelo
             y = df_hist["Numero de prestamos"]
             X = df_hist[["estacion", "hora", "dia_semana"]]
-
             modelo = RandomForestRegressor(n_estimators=100, random_state=42)
             modelo.fit(X, y)
 
+            # Guardar modelo y codificación
             joblib.dump((modelo, codigos_estacion), "modelo_bicis.joblib")
             st.success("✅ Modelo entrenado correctamente.")
 
         except Exception as e:
             st.error(f"❌ Error al entrenar el modelo: {e}")
             st.stop()
+
     else:
         # Cargar modelo y codificación
         modelo, codigos_estacion = joblib.load("modelo_bicis.joblib")
 
-        # Cargar datos actuales para aplicar el modelo
-        df = pd.read_csv(
-            "valenbisi-2022-alquileres-y-devoluciones.csv",
-            sep=";",
-            encoding="utf-8",
-            on_bad_lines="skip",
-            engine="python"
-        )
+    # --- Aplicar predicción al DataFrame actual `df` que ya usas en toda la app ---
 
-    # Función de predicción
     def predecir_bicis(estacion_nombre):
         ahora = datetime.now()
         codigo_est = codigos_estacion.get(estacion_nombre)
         if codigo_est is None:
             return "?"
-        X_pred = pd.DataFrame([[codigo_est, ahora.hour, ahora.weekday()]],
-                              columns=["estacion", "hora", "dia_semana"])
+        X_pred = pd.DataFrame([[codigo_est, ahora.hour, ahora.weekday()]], columns=["estacion", "hora", "dia_semana"])
         return int(modelo.predict(X_pred)[0])
 
     # Añadir columna de predicción
-    df["Predicción_modelo"] = df["Estacion"].apply(predecir_bicis)
+    df["Predicción_modelo"] = df["Direccion"].apply(predecir_bicis)
 
     # Mostrar top 15
     st.dataframe(
-        df[["Estacion", "Numero de prestamos", "Predicción_modelo"]]
+        df[["Direccion", "Bicis_disponibles", "Predicción_modelo"]]
         .sort_values(by="Predicción_modelo", ascending=False)
         .reset_index(drop=True)
         .head(15)
