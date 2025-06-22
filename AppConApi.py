@@ -363,36 +363,30 @@ with tab5:
         st.info("⏳ Entrenando el modelo (solo la primera vez)...")
 
         try:
-            # Cargar datos históricos con separador correcto y parser robusto
-            df_hist = pd.read_csv(
-                "valenbisi-2022-alquileres-y-devoluciones.csv",
-                sep=";",
-                encoding="utf-8",
-                on_bad_lines="skip",
-                engine="python"
-            )
+            # Leer el fichero y forzar separación y limpieza
+            with open("valenbisi-2022-alquileres-y-devoluciones.csv", "r", encoding="utf-8") as f:
+                lines = [line for line in f if line.strip() and ";" in line]
 
-            # Convertir tramo horario a hora inicial
+            from io import StringIO
+            cleaned_data = StringIO("".join(lines))
+
+            df_hist = pd.read_csv(cleaned_data, sep=";", engine="python")
+
+            # El resto igual:
             df_hist["hora"] = df_hist["Tramo horario"].str[:2].astype(int)
-
-            # Codificar estación
             codigos_estacion = {nombre: i for i, nombre in enumerate(df_hist["Estacion"].unique())}
             df_hist["estacion"] = df_hist["Estacion"].map(codigos_estacion)
-
-            # Día de la semana (suponemos que la fecha es YYYYMMDD)
             df_hist["dia_semana"] = pd.to_datetime(df_hist["Fecha creacion"].astype(str), format="%Y%m%d").dt.weekday
 
-            # Target: prestamos
             y = df_hist["Numero de prestamos"]
             X = df_hist[["estacion", "hora", "dia_semana"]]
 
-            # Entrenar
             modelo = RandomForestRegressor(n_estimators=100, random_state=42)
             modelo.fit(X, y)
 
-            # Guardar modelo y codificación
             joblib.dump((modelo, codigos_estacion), "modelo_bicis.joblib")
             st.success("✅ Modelo entrenado correctamente.")
+
         except Exception as e:
             st.error(f"❌ Error al entrenar el modelo: {e}")
             st.stop()
