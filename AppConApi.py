@@ -364,7 +364,7 @@ with tab5:
         st.info("⏳ Entrenando el modelo (solo la primera vez)...")
 
         try:
-            df_hist = pd.read_csv("valenbisi-2022-alquileres-y-devoluciones.csv", sep=",", engine="python")
+            df_hist = pd.read_csv("valenbisi-2022-alquileres-y-devoluciones.csv", sep=",", on_bad_lines="warn", engine="python")
 
             # Codificar estaciones
             codigos_estacion = {nombre: i for i, nombre in enumerate(df_hist["station_name"].unique())}
