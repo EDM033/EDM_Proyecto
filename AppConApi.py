@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import requests
@@ -85,7 +86,14 @@ favoritas = st.sidebar.multiselect(
 )
 
 # --- PESTAÑAS PRINCIPALES
-tab1, tab2, tab3, tab4 = st.tabs(["🗺️ Mapa Interactivo", "📊 Top Estaciones", "📈 Análisis Avanzado", "🚴 Planificar Ruta"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "🗺️ Mapa Interactivo", 
+    "📊 Top Estaciones", 
+    "📈 Análisis Avanzado", 
+    "🚴 Planificar Ruta",
+    "📉 Predicción 1h"  # <-- Nueva pestaña
+])
+
 
 # --- TAB 1: MAPA
 with tab1:
@@ -347,57 +355,54 @@ with tab4:
         """)
         st_folium(st.session_state.mapa_ruta, width=1000, height=600)
 
-import os
 
-# --- Entrenar modelo solo si no existe
-modelo_path = "modelo_bicis.joblib"
+with tab5:
+    st.subheader("📉 Predicción de bicicletas disponibles en 1 hora")
 
-if not os.path.exists(modelo_path):
-    st.warning("🔧 Entrenando el modelo porque no se ha encontrado el archivo `.joblib`...")
-    try:
-        # Cargar histórico
+    # Entrenar modelo solo si no existe
+    if not os.path.exists("modelo_bicis.joblib"):
+        st.info("⏳ Entrenando el modelo (solo la primera vez)...")
+
+        try:
+            df_hist = pd.read_csv("valenbisi-2022-alquileres-y-devoluciones.csv")
+
+            # Codificar estaciones
+            codigos_estacion = {nombre: i for i, nombre in enumerate(df_hist["station_name"].unique())}
+            df_hist["estacion"] = df_hist["station_name"].map(codigos_estacion)
+
+            # Extraer hora y día de semana
+            df_hist["hora"] = pd.to_datetime(df_hist["timestamp"]).dt.hour
+            df_hist["dia_semana"] = pd.to_datetime(df_hist["timestamp"]).dt.weekday
+
+            # Entrenar modelo
+            X = df_hist[["estacion", "hora", "dia_semana"]]
+            y = df_hist["bikes_available"]
+
+            modelo = RandomForestRegressor(n_estimators=100, random_state=42)
+            modelo.fit(X, y)
+
+            # Guardar modelo
+            joblib.dump(modelo, "modelo_bicis.joblib")
+            st.success("✅ Modelo entrenado correctamente.")
+        except Exception as e:
+            st.error(f"❌ Error al entrenar el modelo: {e}")
+            st.stop()
+    else:
+        # Cargar modelo
+        modelo = joblib.load("modelo_bicis.joblib")
         df_hist = pd.read_csv("valenbisi-2022-alquileres-y-devoluciones.csv")
-
-        # Asegurar que existe la columna datetime
-        df_hist["datetime"] = pd.to_datetime(df_hist["datetime"])
-        df_hist["hora"] = df_hist["datetime"].dt.hour
-        df_hist["dia_semana"] = df_hist["datetime"].dt.weekday
-
-        # Codificar estaciones
         codigos_estacion = {nombre: i for i, nombre in enumerate(df_hist["station_name"].unique())}
-        df_hist["estacion"] = df_hist["station_name"].map(codigos_estacion)
 
-        # Entrenar modelo
-        X = df_hist[["estacion", "hora", "dia_semana"]]
-        y = df_hist["available_bikes"]
+    # Función para predecir bicis disponibles
+    def predecir_bicis(estacion_nombre):
+        ahora = datetime.now()
+        codigo_est = codigos_estacion.get(estacion_nombre)
+        if codigo_est is None:
+            return "?"
+        X_pred = pd.DataFrame([[codigo_est, ahora.hour, ahora.weekday()]],
+                              columns=["estacion", "hora", "dia_semana"])
+        return int(modelo.predict(X_pred)[0])
 
-        modelo_bicis = RandomForestRegressor(n_estimators=100, random_state=42)
-        modelo_bicis.fit(X, y)
-
-        joblib.dump(modelo_bicis, modelo_path)
-        st.success("✅ Modelo entrenado y guardado correctamente.")
-    except Exception as e:
-        st.error(f"❌ Error al entrenar el modelo: {e}")
-        st.stop()
-else:
-    # Ya existe: cargarlo directamente
-    df_hist = pd.read_csv("valenbisi-2022-alquileres-y-devoluciones.csv")
-    modelo_bicis = joblib.load(modelo_path)
-    codigos_estacion = {nombre: i for i, nombre in enumerate(df_hist["station_name"].unique())}
-
-# --- Función para predecir con el modelo
-def predecir_bicis(estacion_nombre):
-    ahora = datetime.now()
-    hora = ahora.hour
-    dia = ahora.weekday()
-    codigo_est = codigos_estacion.get(estacion_nombre, -1)
-    if codigo_est == -1:
-        return None
-    X_pred = pd.DataFrame([[codigo_est, hora, dia]], columns=["estacion", "hora", "dia_semana"])
-    return int(modelo_bicis.predict(X_pred)[0])
-
-# --- Aplicar predicción al dataframe actual
-df["Prediccion_1h"] = df["Direccion"].apply(lambda nombre: predecir_bicis(nombre))
-df["Prediccion_libres_1h"] = df["Espacios_totales"] - df["Prediccion_1h"]
-df["Diferencia"] = df["Prediccion_1h"] - df["Bicis_disponibles"]
-df["Ocupacion_%"] = (df["Bicis_disponibles"] / df["Espacios_totales"]) * 100
+    # Mostrar tabla con predicciones actuales
+    df["Predicción_modelo"] = df["Direccion"].apply(predecir_bicis)
+    st.dataframe(df[["Direccion", "Bicis_disponibles", "Predicción_modelo"]].sort_values(by="Predicción_modelo", ascending=False).reset_index(drop=True).head(15))
