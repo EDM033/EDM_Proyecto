@@ -364,20 +364,19 @@ with tab5:
 
     csv_path = "valenbisi-2022-alquileres-y-devoluciones.csv"
 
-   if not os.path.exists("modelo_bicis.joblib"):
     st.info("⏳ Entrenando el modelo (solo la primera vez)...")
 
     try:
         # Leer el fichero y mostrar cuántas líneas se han cargado
-        with open("valenbisi-2022-alquileres-y-devoluciones.csv", "r", encoding="utf-8") as f:
+        with open(csv_path, "r", encoding="utf-8") as f:
             lines = [line for line in f if line.strip() and ";" in line]
-        st.write(f"🔢 Líneas leídas: {len(lines)}")  # <--- AÑADIDO
+        st.write(f"🔢 Líneas leídas: {len(lines)}")
 
-        from io import StringIO
         cleaned_data = StringIO("".join(lines))
         df_hist = pd.read_csv(cleaned_data, sep=";", engine="python")
-        st.write("📄 DataFrame cargado correctamente")  # <--- AÑADIDO
-        st.write(df_hist.head())  # <--- Muestra primeras filas
+
+        st.write("📄 DataFrame cargado correctamente")
+        st.write(df_hist.head())
 
         # Procesamiento
         df_hist["hora"] = df_hist["Tramo horario"].str[:2].astype(int)
@@ -388,12 +387,16 @@ with tab5:
         y = df_hist["Numero de prestamos"]
         X = df_hist[["estacion", "hora", "dia_semana"]]
 
-        st.write("📊 Iniciando entrenamiento del modelo...")  # <--- AÑADIDO
+        st.write("📊 Iniciando entrenamiento del modelo...")
 
         modelo = RandomForestRegressor(n_estimators=100, random_state=42)
         modelo.fit(X, y)
 
-        st.write("✅ Entrenamiento completado")  # <--- AÑADIDO
+        st.write("✅ Entrenamiento completado")
 
         joblib.dump((modelo, codigos_estacion), "modelo_bicis.joblib")
         st.success("✅ Modelo entrenado correctamente.")
+
+    except Exception as e:
+        st.error(f"❌ Error al entrenar el modelo: {e}")
+        st.stop()
