@@ -363,8 +363,14 @@ with tab5:
         st.info("⏳ Entrenando el modelo (solo la primera vez)...")
 
         try:
-            # Cargar datos históricos con separador correcto
-            df_hist = pd.read_csv("valenbisi-2022-alquileres-y-devoluciones.csv", sep=";", encoding="utf-8", on_bad_lines="skip")
+            # Cargar datos históricos con separador correcto y parser robusto
+            df_hist = pd.read_csv(
+                "valenbisi-2022-alquileres-y-devoluciones.csv",
+                sep=";",
+                encoding="utf-8",
+                on_bad_lines="skip",
+                engine="python"
+            )
 
             # Convertir tramo horario a hora inicial
             df_hist["hora"] = df_hist["Tramo horario"].str[:2].astype(int)
@@ -376,7 +382,7 @@ with tab5:
             # Día de la semana (suponemos que la fecha es YYYYMMDD)
             df_hist["dia_semana"] = pd.to_datetime(df_hist["Fecha creacion"].astype(str), format="%Y%m%d").dt.weekday
 
-            # Target: prestamos (puedes usar devoluciones también o hacer media)
+            # Target: prestamos
             y = df_hist["Numero de prestamos"]
             X = df_hist[["estacion", "hora", "dia_semana"]]
 
@@ -384,7 +390,7 @@ with tab5:
             modelo = RandomForestRegressor(n_estimators=100, random_state=42)
             modelo.fit(X, y)
 
-            # Guardar modelo
+            # Guardar modelo y codificación
             joblib.dump((modelo, codigos_estacion), "modelo_bicis.joblib")
             st.success("✅ Modelo entrenado correctamente.")
         except Exception as e:
@@ -394,8 +400,14 @@ with tab5:
         # Cargar modelo y codificación
         modelo, codigos_estacion = joblib.load("modelo_bicis.joblib")
 
-        # Cargar datos actuales (mismo CSV)
-        df = pd.read_csv("valenbisi-2022-alquileres-y-devoluciones.csv", sep=";", encoding="utf-8", on_bad_lines="skip")
+        # Cargar datos actuales para aplicar el modelo
+        df = pd.read_csv(
+            "valenbisi-2022-alquileres-y-devoluciones.csv",
+            sep=";",
+            encoding="utf-8",
+            on_bad_lines="skip",
+            engine="python"
+        )
 
     # Función de predicción
     def predecir_bicis(estacion_nombre):
@@ -403,11 +415,17 @@ with tab5:
         codigo_est = codigos_estacion.get(estacion_nombre)
         if codigo_est is None:
             return "?"
-        X_pred = pd.DataFrame([[codigo_est, ahora.hour, ahora.weekday()]], columns=["estacion", "hora", "dia_semana"])
+        X_pred = pd.DataFrame([[codigo_est, ahora.hour, ahora.weekday()]],
+                              columns=["estacion", "hora", "dia_semana"])
         return int(modelo.predict(X_pred)[0])
 
     # Añadir columna de predicción
     df["Predicción_modelo"] = df["Estacion"].apply(predecir_bicis)
 
     # Mostrar top 15
-    st.dataframe(df[["Estacion", "Numero de prestamos", "Predicción_modelo"]].sort_values(by="Predicción_modelo", ascending=False).reset_index(drop=True).head(15))
+    st.dataframe(
+        df[["Estacion", "Numero de prestamos", "Predicción_modelo"]]
+        .sort_values(by="Predicción_modelo", ascending=False)
+        .reset_index(drop=True)
+        .head(15)
+    )
