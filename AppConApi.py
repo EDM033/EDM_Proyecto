@@ -365,8 +365,10 @@ with tab5:
 
         try:
             # Leer CSV y limpiar líneas defectuosas
-            with open("valenbisi-2022-alquileres-y-devoluciones.csv", "r", encoding="utf-8") as f:
-                lines = [line for line in f if line.strip() and ";" in line]
+            with open("valenbisi-2022-alquileres-y-devoluciones.csv", encoding="utf-8") as f:
+                for i, line in enumerate(f, 1):
+                    if line.count(";") != 7:
+                        print(f"Línea {i} mal formada: {line.strip()}")
 
             from io import StringIO
             cleaned_data = StringIO("".join(lines))
