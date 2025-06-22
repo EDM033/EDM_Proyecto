@@ -364,61 +364,36 @@ with tab5:
 
     csv_path = "valenbisi-2022-alquileres-y-devoluciones.csv"
 
-    if not os.path.exists("modelo_bicis.joblib"):
-        st.info("⏳ Entrenando el modelo (solo la primera vez)...")
+   if not os.path.exists("modelo_bicis.joblib"):
+    st.info("⏳ Entrenando el modelo (solo la primera vez)...")
 
-        try:
-            # Leer y corregir cabecera si hace falta
-            with open(csv_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
+    try:
+        # Leer el fichero y mostrar cuántas líneas se han cargado
+        with open("valenbisi-2022-alquileres-y-devoluciones.csv", "r", encoding="utf-8") as f:
+            lines = [line for line in f if line.strip() and ";" in line]
+        st.write(f"🔢 Líneas leídas: {len(lines)}")  # <--- AÑADIDO
 
-            if lines[0].startswith("d;"):
-                lines[0] = "id;Codigo Estacion;Estacion;Tramo horario;Numero de prestamos;Numero de devoluciones;Fecha creacion;Fecha baja\n"
+        from io import StringIO
+        cleaned_data = StringIO("".join(lines))
+        df_hist = pd.read_csv(cleaned_data, sep=";", engine="python")
+        st.write("📄 DataFrame cargado correctamente")  # <--- AÑADIDO
+        st.write(df_hist.head())  # <--- Muestra primeras filas
 
-            cleaned_csv = StringIO("".join([line for line in lines if line.strip() and ";" in line]))
-            df_hist = pd.read_csv(cleaned_csv, sep=";")
+        # Procesamiento
+        df_hist["hora"] = df_hist["Tramo horario"].str[:2].astype(int)
+        codigos_estacion = {nombre: i for i, nombre in enumerate(df_hist["Estacion"].unique())}
+        df_hist["estacion"] = df_hist["Estacion"].map(codigos_estacion)
+        df_hist["dia_semana"] = pd.to_datetime(df_hist["Fecha creacion"].astype(str), format="%Y%m%d").dt.weekday
 
-            # Procesamiento
-            df_hist["hora"] = df_hist["Tramo horario"].str[:2].astype(int)
-            codigos_estacion = {nombre: i for i, nombre in enumerate(df_hist["Estacion"].unique())}
-            df_hist["estacion"] = df_hist["Estacion"].map(codigos_estacion)
-            df_hist["dia_semana"] = pd.to_datetime(df_hist["Fecha creacion"].astype(str), format="%Y%m%d").dt.weekday
+        y = df_hist["Numero de prestamos"]
+        X = df_hist[["estacion", "hora", "dia_semana"]]
 
-            X = df_hist[["estacion", "hora", "dia_semana"]]
-            y = df_hist["Numero de prestamos"]
+        st.write("📊 Iniciando entrenamiento del modelo...")  # <--- AÑADIDO
 
-            modelo = RandomForestRegressor(n_estimators=100, random_state=42)
-            modelo.fit(X, y)
+        modelo = RandomForestRegressor(n_estimators=100, random_state=42)
+        modelo.fit(X, y)
 
-            joblib.dump((modelo, codigos_estacion), "modelo_bicis.joblib")
-            st.success("✅ Modelo entrenado correctamente.")
+        st.write("✅ Entrenamiento completado")  # <--- AÑADIDO
 
-        except Exception as e:
-            st.error(f"❌ Error al entrenar el modelo: {e}")
-            st.stop()
-    else:
-        modelo, codigos_estacion = joblib.load("modelo_bicis.joblib")
-
-        df = pd.read_csv(csv_path, sep=";", encoding="utf-8", engine="python", on_bad_lines="skip")
-        if "Estacion" not in df.columns:
-            st.error("❌ Error: no se encontró la columna 'Estacion' en los datos cargados.")
-            st.stop()
-
-    # Predicción
-    def predecir_bicis(estacion_nombre):
-        ahora = datetime.now()
-        codigo_est = codigos_estacion.get(estacion_nombre)
-        if codigo_est is None:
-            return "?"
-        X_pred = pd.DataFrame([[codigo_est, ahora.hour, ahora.weekday()]],
-                              columns=["estacion", "hora", "dia_semana"])
-        return int(modelo.predict(X_pred)[0])
-
-    df["Predicción_modelo"] = df["Estacion"].apply(predecir_bicis)
-
-    st.dataframe(
-        df[["Estacion", "Numero de prestamos", "Predicción_modelo"]]
-        .sort_values(by="Predicción_modelo", ascending=False)
-        .reset_index(drop=True)
-        .head(15)
-    )
+        joblib.dump((modelo, codigos_estacion), "modelo_bicis.joblib")
+        st.success("✅ Modelo entrenado correctamente.")
