@@ -359,54 +359,44 @@ with tab4:
 with tab5:
     st.subheader("📉 Predicción de bicicletas disponibles en 1 hora")
 
+    import os
+    from io import StringIO
+
+    csv_path = "valenbisi-2022-alquileres-y-devoluciones.csv"
+
+    st.info("⏳ Entrenando el modelo (solo la primera vez)...")
+
     try:
-        # Leer y limpiar CSV
-        with open("valenbisi-2022-alquileres-y-devoluciones.csv", "r", encoding="utf-8") as f:
+        # Leer el fichero y mostrar cuántas líneas se han cargado
+        with open(csv_path, "r", encoding="utf-8") as f:
             lines = [line for line in f if line.strip() and ";" in line]
+        st.write(f"🔢 Líneas leídas: {len(lines)}")
 
-        st.write(f"🔢 Líneas válidas encontradas: {len(lines)}")
+        cleaned_data = StringIO("".join(lines))
+        df_hist = pd.read_csv(cleaned_data, sep=";", engine="python")
 
-        df_hist = pd.read_csv(StringIO("".join(lines)), sep=";", engine="python")
-        st.write("📄 Vista previa del dataset:")
+        st.write("📄 DataFrame cargado correctamente")
         st.write(df_hist.head())
 
-        # Procesamiento de datos
+        # Procesamiento
         df_hist["hora"] = df_hist["Tramo horario"].str[:2].astype(int)
-        df_hist["dia_semana"] = pd.to_datetime(df_hist["Fecha creacion"].astype(str), format="%Y%m%d").dt.weekday
         codigos_estacion = {nombre: i for i, nombre in enumerate(df_hist["Estacion"].unique())}
         df_hist["estacion"] = df_hist["Estacion"].map(codigos_estacion)
+        df_hist["dia_semana"] = pd.to_datetime(df_hist["Fecha creacion"].astype(str), format="%Y%m%d").dt.weekday
 
-        if not os.path.exists("modelo_bicis.joblib"):
-            st.info("⏳ Entrenando modelo...")
-            X = df_hist[["estacion", "hora", "dia_semana"]]
-            y = df_hist["Numero de prestamos"]
-            modelo = RandomForestRegressor(n_estimators=100, random_state=42)
-            modelo.fit(X, y)
-            joblib.dump((modelo, codigos_estacion), "modelo_bicis.joblib")
-            st.success("✅ Modelo entrenado y guardado.")
-        else:
-            modelo, codigos_estacion = joblib.load("modelo_bicis.joblib")
-            st.info("📦 Modelo cargado correctamente.")
+        y = df_hist["Numero de prestamos"]
+        X = df_hist[["estacion", "hora", "dia_semana"]]
 
-        # Predicción
-        def predecir_bicis(estacion_nombre):
-            ahora = datetime.now()
-            codigo = codigos_estacion.get(estacion_nombre)
-            if codigo is None:
-                return "?"
-            X_pred = pd.DataFrame([[codigo, ahora.hour, ahora.weekday()]], columns=["estacion", "hora", "dia_semana"])
-            return int(modelo.predict(X_pred)[0])
+        st.write("📊 Iniciando entrenamiento del modelo...")
 
-        df_hist["Predicción_modelo"] = df_hist["Estacion"].apply(predecir_bicis)
+        modelo = RandomForestRegressor(n_estimators=100, random_state=42)
+        modelo.fit(X, y)
 
-        st.subheader("📋 Top 15 estaciones con más bicis previstas")
-        st.dataframe(
-            df_hist[["Estacion", "Numero de prestamos", "Predicción_modelo"]]
-            .sort_values(by="Predicción_modelo", ascending=False)
-            .reset_index(drop=True)
-            .head(15)
-        )
+        st.write("✅ Entrenamiento completado")
+
+        joblib.dump((modelo, codigos_estacion), "modelo_bicis.joblib")
+        st.success("✅ Modelo entrenado correctamente.")
 
     except Exception as e:
-        st.error("❌ Error durante la predicción:")
-        st.code(traceback.format_exc())
+        st.error(f"❌ Error al entrenar el modelo: {e}")
+        st.stop()
