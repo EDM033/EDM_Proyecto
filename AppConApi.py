@@ -364,8 +364,13 @@ with tab5:
 
         try:
             # Leer el fichero y forzar separación y limpieza
-            with open("valenbisi-2022-alquileres-y-devoluciones.csv", "r", encoding="utf-8") as f:
-                lines = [line for line in f if line.strip() and ";" in line]
+            import os
+
+# Limpiar el archivo solo si hay problemas (una vez al principio)
+csv_path = "valenbisi-2022-alquileres-y-devoluciones.csv"
+if os.path.exists(csv_path):
+    with open(csv_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
 
             from io import StringIO
             cleaned_data = StringIO("".join(lines))
